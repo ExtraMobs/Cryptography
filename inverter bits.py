@@ -1,33 +1,52 @@
 import math
 import os
+import shutil
 import time
+from multiprocessing import Process
 
 CHUNK_SIZE = 1048576 * 32 # 1MB x 32
+
+def process_bytes(index, scale, orig_path, out_path):
+    start = index*scale
+    end = (start+scale)-1
+    
+    orig_file = open(orig_path, "rb")
+    out_file = open(out_path, "rb+")
+    orig_file.seek(start)
+    out_file.seek(start)
+    list_bytes = bytearray(orig_file.read(scale))
+    for index, byte in enumerate(list_bytes[start:end]):
+        list_bytes[index] = 255 - byte
+    out_file.write(list_bytes)
+    
+    orig_file.close()
+    out_file.close()
 
 
 def inverter_bits(path, mode):
     if mode in ("encode, decode"):
-        t = time.time()
         filename = os.path.basename(path)
         output_path = os.path.abspath(f"saida/{mode}/{filename}")
+        shutil.copy2(path, output_path)
+        t = time.time()
         size = os.path.getsize(path)
-        orig_file = open(path, "rb")
-        output_file = open(output_path, "ab")
         total_chunks = math.ceil(size / CHUNK_SIZE)
+        num_workers = 4
+        work_scale = CHUNK_SIZE//num_workers
         for progress in range(total_chunks):
-            orig_chunk = bytearray(orig_file.read(CHUNK_SIZE))
-            for index, byte in enumerate(orig_chunk):
-                orig_chunk[index] = 255 - byte
-            output_file.write(orig_chunk)
+            workers = []
+            for i in range(num_workers):
+                workers.append(Process(target=process_bytes, args=(progress*work_scale+i, work_scale, path, output_path)))
+                workers[i].start()
+            for worker in workers:
+                worker.join()
             p = progress / total_chunks * 100
-            print(f"  chunk {progress:,} of {total_chunks:,} ( {p:.2f}% ), file: {filename}", end="\r")
-        print()
+            print(f"  chunk {progress+1:,} of {total_chunks:,} ( {p:.2f}% ), file: {filename}", end="\r")
         print(100*" ", end="\r")
-        print()
-        orig_file.close()
-        output_file.close()
         t = time.time() - t
-        print(f"{t:.2f}", filename)
+        print()
+        print(f"{t:.2f} segundos, arquivo", filename)
+        print()
 
 
 def main():
@@ -62,7 +81,6 @@ def main():
                             for file in files:
                                 print(os.path.join(top, file))
                                 inverter_bits(os.path.join(caminho, file), pasta)
-
                     break
 
 
