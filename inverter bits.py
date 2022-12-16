@@ -1,6 +1,5 @@
 import math
 import os
-import shutil
 import time
 from multiprocessing import Process
 
@@ -16,7 +15,8 @@ def process_bytes(index, scale, orig_path, out_path):
     out_file.seek(start)
     list_bytes = bytearray(orig_file.read(scale))
     for index, byte in enumerate(list_bytes[start:end]):
-        list_bytes[index] = 255 - byte
+        list_bytes[start+index] = 255 - byte
+    out_file.seek(start)
     out_file.write(list_bytes)
     
     orig_file.close()
@@ -27,14 +27,17 @@ def inverter_bits(path, mode):
     if mode in ("encode, decode"):
         filename = os.path.basename(path)
         output_path = os.path.abspath(f"saida/{mode}/{filename}")
-        shutil.copy2(path, output_path)
         t = time.time()
         size = os.path.getsize(path)
         total_chunks = math.ceil(size / CHUNK_SIZE)
-        num_workers = 4
+        num_workers = 4 if size >= CHUNK_SIZE else 1
         work_scale = CHUNK_SIZE//num_workers
+        output_file = open(output_path, "wb")
+        orig_file = open(path, "rb")
         for progress in range(total_chunks):
             workers = []
+            output_file.write(orig_file.read(CHUNK_SIZE))
+            output_file.flush()
             for i in range(num_workers):
                 workers.append(Process(target=process_bytes, args=(progress*work_scale+i, work_scale, path, output_path)))
                 workers[i].start()
